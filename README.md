@@ -1,0 +1,2 @@
+# gospoofcheck
+spoofcheck in go
