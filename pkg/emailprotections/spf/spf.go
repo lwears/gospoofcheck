@@ -1,4 +1,4 @@
-package emailprotections
+package spf
 
 import (
 	"errors"
@@ -6,24 +6,14 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/lwears/gospoofcheck/pkg/emailprotections/shared"
 	"github.com/miekg/dns"
 	"golang.org/x/exp/slices"
 )
 
 const rootDomain = "@"
 
-// InvalidDomainError indicates that the domain name is invalid
-var InvalidDomainError = errors.New("invalid domain name")
-
-// InvalidResponseError indicates that the response is invalid
-var InvalidResponseError = errors.New("invalid response status code returned by the server")
-
 var NoSpfFoundError = errors.New("No SPF string found for domain")
-
-type Options struct {
-	DnsResolver string
-	Domain      string
-}
 
 type SpfRecord struct {
 	Version        string
@@ -34,27 +24,23 @@ type SpfRecord struct {
 	RecursionDepth int8
 }
 
-func (spf *SpfRecord) String() string {
-	return spf.Record
-}
-
-func FromDomain(opts *Options) *SpfRecord {
+func FromDomain(opts *shared.Options) *SpfRecord {
 	spfString, err := GetSpfStringForDomain(opts)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	return FromSpfString(spfString, opts.Domain)
+	return FromSpfString(spfString, &opts.Domain)
 }
 
-func FromSpfString(spfString *string, domain string) *SpfRecord {
+func FromSpfString(spfString *string, domain *string) *SpfRecord {
 
 	if spfString == nil {
 		return nil
 	}
 	mechanisms := ExtractMechanisms(*spfString)
 	return &SpfRecord{
-		Domain:     domain,
+		Domain:     *domain,
 		Record:     *spfString,
 		Mechanisms: mechanisms,
 		Version:    ExtractVersion(*spfString),
@@ -63,9 +49,9 @@ func FromSpfString(spfString *string, domain string) *SpfRecord {
 
 }
 
-func GetSpfStringForDomain(opts *Options) (*string, error) {
-	if !IsValidDomainName(opts.Domain) {
-		return nil, InvalidDomainError
+func GetSpfStringForDomain(opts *shared.Options) (*string, error) {
+	if !shared.IsValidDomainName(opts.Domain) {
+		return nil, shared.InvalidDomainError
 	}
 
 	fqnd := dns.Fqdn(opts.Domain)
@@ -98,8 +84,7 @@ func FindSpfStringFromAnswers(txtRecords []dns.RR) *string {
 
 func ExtractMechanisms(spfString string) []string {
 	spfMechanismPattern := regexp.MustCompile(`(?:((?:\+|-|~)?(?:a|mx|ptr|include|ip4|ip6|exists|redirect|exp|all)(?:(?::|=|/)?(?:\S*))?) ?)`)
-	spfMechanisms := spfMechanismPattern.FindAllString(spfString, -1)
-	return spfMechanisms
+	return spfMechanismPattern.FindAllString(spfString, -1)
 }
 
 func ExtractVersion(spfString string) string {
@@ -130,6 +115,10 @@ func ExtractAllMechanism(mechanisms []string) string {
 // 	}
 // }
 
+func (spf *SpfRecord) String() string {
+	return spf.Record
+}
+
 func (spf *SpfRecord) GetRedirectDomain() *string {
 	if len(spf.Mechanisms) > 0 {
 		for _, m := range spf.Mechanisms {
@@ -143,8 +132,8 @@ func (spf *SpfRecord) GetRedirectDomain() *string {
 
 func (spf *SpfRecord) IsRedirectMechanismStrong(dnsResolver string) bool {
 	if redirectDomain := spf.GetRedirectDomain(); redirectDomain != nil {
-		redirectMechanism := FromDomain(&Options{DnsResolver: dnsResolver, Domain: *redirectDomain})
-		return redirectMechanism != nil && redirectMechanism.IsRecordStrong(&Options{DnsResolver: dnsResolver})
+		redirectMechanism := FromDomain(&shared.Options{DnsResolver: dnsResolver, Domain: *redirectDomain})
+		return redirectMechanism != nil && redirectMechanism.IsRecordStrong(&shared.Options{DnsResolver: dnsResolver})
 	}
 
 	return false
@@ -170,7 +159,7 @@ func (spf *SpfRecord) IsRedirectMechanismStrong(dnsResolver string) bool {
 
 // }
 
-func (spf *SpfRecord) IsRecordStrong(opts *Options) bool {
+func (spf *SpfRecord) IsRecordStrong(opts *shared.Options) bool {
 	allStrength := spf.IsAllMechanismStrong()
 	redirectStrength := spf.IsRedirectMechanismStrong(opts.DnsResolver)
 	includeStrength := spf.AreIncludeMechanismsStrong(opts)
@@ -182,7 +171,7 @@ func (spf *SpfRecord) IsAllMechanismStrong() bool {
 	return slices.Contains([]string{"~all", "-all"}, spf.AllString)
 }
 
-func (spf *SpfRecord) AreIncludeMechanismsStrong(opts *Options) bool {
+func (spf *SpfRecord) AreIncludeMechanismsStrong(opts *shared.Options) bool {
 	includeRecords := spf.GetIncludeRecords()
 	for _, r := range includeRecords {
 		if _, ok := includeRecords[r.Domain]; ok {
@@ -213,7 +202,7 @@ func (spf *SpfRecord) GetIncludeRecords() map[string]*SpfRecord {
 		includeDomains := spf.GetIncludeDomains()
 		for _, domain := range includeDomains {
 			// TODO: Fix DNS Resolver
-			start[domain] = FromDomain(&Options{Domain: domain})
+			start[domain] = FromDomain(&shared.Options{Domain: domain})
 			start[domain].RecursionDepth = spf.RecursionDepth
 		}
 	}

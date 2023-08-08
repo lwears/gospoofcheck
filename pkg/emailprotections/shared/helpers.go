@@ -1,4 +1,4 @@
-package emailprotections
+package shared
 
 import (
 	"regexp"
