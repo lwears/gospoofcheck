@@ -15,10 +15,12 @@ import (
 	spfLib "github.com/lwears/gospoofcheck/pkg/emailprotections/spf"
 )
 
-var red = color.New(color.Bold, color.FgRed).SprintFunc()
-var green = color.New(color.Bold, color.FgGreen).SprintFunc()
-var white = color.New(color.Bold, color.FgWhite).SprintFunc()
-var blue = color.New(color.Bold, color.FgBlue).SprintFunc()
+var (
+	red   = color.New(color.Bold, color.FgRed).SprintFunc()
+	green = color.New(color.Bold, color.FgGreen).SprintFunc()
+	white = color.New(color.Bold, color.FgWhite).SprintFunc()
+	blue  = color.New(color.Bold, color.FgBlue).SprintFunc()
+)
 
 type Color int
 
@@ -43,15 +45,14 @@ func FormatOutput(color Color, text string) {
 }
 
 func main() {
-
 	opts, err := ReadOptions()
-
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	IsSpfStrong(opts)
 	fmt.Println()
+
 	IsDmarcStrong(opts)
 	fmt.Println()
 }
@@ -71,7 +72,6 @@ func ReadOptions() (*shared.Options, error) {
 }
 
 func IsSpfStrong(opts *shared.Options) bool {
-
 	FormatOutput(White, fmt.Sprintf("Processing domain: %s", white(opts.Domain)))
 
 	spf := spfLib.FromDomain(opts)
@@ -128,7 +128,6 @@ func CheckSpfAllMechanism(spf *spfLib.SpfRecord, opts *shared.Options) bool {
 	}
 
 	return strong || CheckSpfIncludeRedirect(spf, opts)
-
 }
 
 func AreSpfIncludeMechanismsStrong(spf *spfLib.SpfRecord, opts *shared.Options) bool {
@@ -171,7 +170,6 @@ func CheckDmarcPolicy(dmarc *dmarcLib.DmarcRecord) bool {
 
 	FormatOutput(Red, fmt.Sprintf("DMARC policy set to: %s", white(dmarc.Policy)))
 	return false
-
 }
 
 func CheckDmarcExtras(dmarc *dmarcLib.DmarcRecord) {
@@ -180,24 +178,20 @@ func CheckDmarcExtras(dmarc *dmarcLib.DmarcRecord) {
 	}
 	if dmarc.RUA != "" {
 		FormatOutput(White, fmt.Sprintf("Aggregate reports will be sent: %s", white(dmarc.RUA)))
-
 	}
 	if dmarc.RUF != "" {
 		FormatOutput(White, fmt.Sprintf("Forensics reports will be sent: %s", white(dmarc.RUF)))
-
 	}
 }
 
 // func CheckDmarcOrgPolicy() {}
 
 func IsDmarcStrong(opts *shared.Options) bool {
-
 	dmarcRecordStrong := false
 
 	FormatOutput(White, fmt.Sprintf("Processing domain: %s", white(opts.Domain)))
 
 	dmarc, err := dmarcLib.FromDomain(opts)
-
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -216,5 +210,4 @@ func IsDmarcStrong(opts *shared.Options) bool {
 	}
 
 	return dmarcRecordStrong
-
 }
