@@ -7,11 +7,12 @@ import (
 	"strconv"
 
 	"github.com/fatih/color"
+	"golang.org/x/exp/slices"
+
 	"github.com/lwears/gospoofcheck/pkg/dnsresolver"
 	dmarcLib "github.com/lwears/gospoofcheck/pkg/emailprotections/dmarc"
 	"github.com/lwears/gospoofcheck/pkg/emailprotections/shared"
 	spfLib "github.com/lwears/gospoofcheck/pkg/emailprotections/spf"
-	"golang.org/x/exp/slices"
 )
 
 var red = color.New(color.Bold, color.FgRed).SprintFunc()
