@@ -13,3 +13,19 @@ Domains are spoofable if any of the following conditions are met:
 - Lack of an SPF or DMARC record
 - SPF record never specifies `~all` or `-all`
 - DMARC policy is set to `p=none` or is nonexistent
+
+Example output
+
+```shell
+%$ go run . domain.com
+
+[+] Processing domain: domain.com
+[+] Found SPF record: v=spf1 include:_spf.domain.com -all
+[+] SPF record contains an "All" item: -all
+
+[+] Processing domain: domain.com
+[+] DMARC percentage is set to 50% - spoofing might be possible
+[+] Aggregate reports will be sent: mailto:dmarcreports@domain.com
+[+] Forensics reports will be sent: mailto:dmarcreports_fo@domain.com
+[+] DMARC policy set to: quarantine
+```
