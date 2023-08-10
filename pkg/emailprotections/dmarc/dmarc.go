@@ -3,8 +3,6 @@ package dmarc
 import (
 	"errors"
 	"fmt"
-	"log"
-	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -12,6 +10,7 @@ import (
 	"github.com/lwears/gospoofcheck/pkg/emailprotections/shared"
 	"github.com/miekg/dns"
 	"golang.org/x/exp/slices"
+	"golang.org/x/net/publicsuffix"
 )
 
 type DmarcRecord struct {
@@ -33,18 +32,12 @@ func (dmarc *DmarcRecord) String() string {
 }
 
 func FromDmarcString(dmarcString *string, domain *string) (*DmarcRecord, error) {
-
-	if dmarcString == nil {
-		return nil, errors.New("no dmarc string")
-	}
-
 	dmarc, err := InitalizeDmarc(dmarcString, domain)
 	if err != nil {
 		return nil, err
 	}
 
 	return dmarc, nil
-
 }
 
 /*
@@ -57,6 +50,9 @@ func FromDmarcString(dmarcString *string, domain *string) (*DmarcRecord, error) 
 */
 
 func InitalizeDmarc(dmarcString *string, domain *string) (*DmarcRecord, error) {
+	if dmarcString == nil {
+		return &DmarcRecord{Domain: *domain}, nil
+	}
 
 	tags := ExtractTags(*dmarcString)
 	mappedTags := make(map[string]string)
@@ -116,15 +112,13 @@ func ExtractTags(dmarcRecord string) [][]string {
 
 func FromDomain(opts *shared.Options) (*DmarcRecord, error) {
 	dmarcString, err := GetDmarcStringForDomain(opts)
-
 	if err != nil {
-		log.Fatal(err)
+		return nil, errors.New("error getting dmarc string for domain")
 	}
 
 	dmarc, err := FromDmarcString(dmarcString, &opts.Domain)
-
 	if err != nil {
-		log.Fatal(err)
+		return nil, fmt.Errorf("\nerror parsing dmarc string: %s", err)
 	}
 
 	return dmarc, nil
@@ -172,14 +166,8 @@ func (dmarc *DmarcRecord) GetOrgRecord(dnsResolver string) (*DmarcRecord, error)
 	return FromDomain(&shared.Options{Domain: orgDomain, DnsResolver: dnsResolver})
 }
 
-func (dmarc *DmarcRecord) GetOrgDomain() string {
-	url, err := url.Parse(dmarc.Domain)
-	if err != nil {
-		log.Fatal(err)
-	}
-	parts := strings.Split(url.Hostname(), ".")
-	domain := parts[len(parts)-2] + "." + parts[len(parts)-1]
-	return domain
+func (dmarc *DmarcRecord) GetOrgDomain() (string, error) {
+	return publicsuffix.EffectiveTLDPlusOne(dmarc.Domain)
 }
 
 func (dmarc *DmarcRecord) IsOrgDomainStrong(dnsResolver string) (bool, error) {
@@ -193,7 +181,6 @@ func (dmarc *DmarcRecord) IsOrgDomainStrong(dnsResolver string) (bool, error) {
 	}
 
 	return orgRecord.IsRecordStrong(dnsResolver)
-
 }
 
 func (dmarc *DmarcRecord) IsSubdomainPolicyStrong() bool {
@@ -205,5 +192,4 @@ func (dmarc *DmarcRecord) IsRecordStrong(dnsResolver string) (bool, error) {
 		return true, nil
 	}
 	return dmarc.IsOrgDomainStrong(dnsResolver)
-
 }

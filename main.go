@@ -4,10 +4,10 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"slices"
 	"strconv"
 
 	"github.com/fatih/color"
-	"golang.org/x/exp/slices"
 
 	"github.com/lwears/gospoofcheck/pkg/dnsresolver"
 	dmarcLib "github.com/lwears/gospoofcheck/pkg/emailprotections/dmarc"
@@ -47,6 +47,7 @@ func FormatOutput(color Color, text string) {
 func main() {
 	opts, err := ReadOptions()
 	if err != nil {
+		// try to recover first, if you can’t then fatal)
 		log.Fatal(err)
 	}
 
@@ -71,50 +72,64 @@ func ReadOptions() (*shared.Options, error) {
 	return cfg, nil
 }
 
-func IsSpfStrong(opts *shared.Options) bool {
+func IsSpfStrong(opts *shared.Options) (bool, error) {
 	FormatOutput(White, fmt.Sprintf("Processing domain: %s", white(opts.Domain)))
 
-	spf := spfLib.FromDomain(opts)
+	spf, err := spfLib.FromDomain(opts)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	if spf == nil {
 		FormatOutput(Green, fmt.Sprintf("%s has no SPF record", white(opts.Domain)))
-		return false
+		return false, nil
 	}
 
 	FormatOutput(White, fmt.Sprintf("Found SPF record: %s", spf.Record))
 
-	strong := CheckSpfAllMechanism(spf, opts)
+	strong, err := CheckSpfAllMechanism(spf, opts)
+	if err != nil {
+		return false, fmt.Errorf("error checking include mechanisms %s", err)
+	}
 
 	if !strong {
-		redirectStrength := CheckSpfRedirectMechanisms(spf, opts.DnsResolver)
-		includeStrength := CheckSpfIncludeMechanisms(spf, opts.DnsResolver)
-		strong = redirectStrength || includeStrength
+
+		redirectStrength, err := CheckSpfRedirectMechanisms(spf, opts.DnsResolver)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		includeStrength, err := CheckSpfIncludeMechanisms(spf, opts.DnsResolver)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		return redirectStrength || includeStrength, nil
 	}
 
-	return strong
+	return strong, nil
 }
 
-func CheckSpfRedirectMechanisms(spf *spfLib.SpfRecord, dnsResolver string) bool {
+func CheckSpfRedirectMechanisms(spf *spfLib.SpfRecord, dnsResolver string) (bool, error) {
 	redirectDomain := spf.GetRedirectDomain()
-	if redirectDomain == nil {
-		return false
+	if redirectDomain == "" {
+		return false, nil
 	}
-	FormatOutput(White, fmt.Sprintf("Processing an SPF redirect domain: %s", *redirectDomain))
-	return IsSpfStrong(&shared.Options{Domain: *redirectDomain, DnsResolver: dnsResolver})
+	FormatOutput(White, fmt.Sprintf("Processing an SPF redirect domain: %s", redirectDomain))
+	return IsSpfStrong(&shared.Options{Domain: redirectDomain, DnsResolver: dnsResolver})
 }
 
-func CheckSpfIncludeMechanisms(spf *spfLib.SpfRecord, dnsResolver string) bool {
+func CheckSpfIncludeMechanisms(spf *spfLib.SpfRecord, dnsResolver string) (bool, error) {
 	includeDomainList := spf.GetIncludeDomains()
 	for _, domain := range includeDomainList {
 		FormatOutput(White, fmt.Sprintf("Processing an SPF include domain: %s\n\n", domain))
-		if IsSpfStrong(&shared.Options{Domain: domain, DnsResolver: dnsResolver}) {
-			return true
-		}
+
+		return IsSpfStrong(&shared.Options{Domain: domain, DnsResolver: dnsResolver})
 	}
-	return false
+	return false, nil
 }
 
-func CheckSpfAllMechanism(spf *spfLib.SpfRecord, opts *shared.Options) bool {
+func CheckSpfAllMechanism(spf *spfLib.SpfRecord, opts *shared.Options) (bool, error) {
 	if spf.AllString == "" {
 		FormatOutput(Red, "SPF record has no \"All\" string")
 	}
@@ -127,34 +142,62 @@ func CheckSpfAllMechanism(spf *spfLib.SpfRecord, opts *shared.Options) bool {
 		FormatOutput(Red, fmt.Sprintf("SPF record \"All\" item is too weak: %s", white(spf.AllString)))
 	}
 
-	return strong || CheckSpfIncludeRedirect(spf, opts)
+	if !strong {
+		return CheckSpfIncludeRedirect(spf, opts)
+	}
+
+	return strong, nil
 }
 
-func AreSpfIncludeMechanismsStrong(spf *spfLib.SpfRecord, opts *shared.Options) bool {
+func AreSpfIncludeMechanismsStrong(spf *spfLib.SpfRecord, opts *shared.Options) (bool, error) {
 	FormatOutput(White, "Checking SPF include mechanisms")
-	strong := spf.AreIncludeMechanismsStrong(opts)
+
+	strong, err := spf.AreIncludeMechanismsStrong(opts)
+	if err != nil {
+		return false, fmt.Errorf("error checking include mechanisms %s", err)
+	}
+
 	if strong {
 		FormatOutput(Green, "Include mechanisms include a strong record")
 	} else {
 		FormatOutput(Red, "Include mechanisms are not strong")
 	}
-	return strong
+
+	return strong, nil
 }
 
-func CheckSpfIncludeRedirect(spf *spfLib.SpfRecord, opts *shared.Options) bool {
-	return IsSpfRedirectStrong(spf) || AreSpfIncludeMechanismsStrong(spf, opts)
+// TODO: Check this
+func CheckSpfIncludeRedirect(spf *spfLib.SpfRecord, opts *shared.Options) (bool, error) {
+	areSpfIncludeMechanismsStrong, err := AreSpfIncludeMechanismsStrong(spf, opts)
+	if err != nil {
+		return false, err
+	}
+
+	isSpfRedirectStrong, err := IsSpfRedirectStrong(spf)
+	if err != nil {
+		return false, err
+	}
+
+	return isSpfRedirectStrong || areSpfIncludeMechanismsStrong, nil
 }
 
-func IsSpfRedirectStrong(spf *spfLib.SpfRecord) bool {
+func IsSpfRedirectStrong(spf *spfLib.SpfRecord) (bool, error) {
 	domain := spf.GetRedirectDomain()
-	FormatOutput(White, fmt.Sprintf("Checking SPF redirect domain: %s", *domain))
-	redirectStrong := spf.IsRedirectMechanismStrong(dnsresolver.CloudflareDNS)
+
+	FormatOutput(White, fmt.Sprintf("Checking SPF redirect domain: %s", domain))
+
+	redirectStrong, err := spf.IsRedirectMechanismStrong(dnsresolver.CloudflareDNS)
+	if err != nil {
+		return false, fmt.Errorf("error checking if redirect mechanism is strong %s", err)
+	}
+
 	if redirectStrong {
 		FormatOutput(Green, "Redirect mechanism is strong.")
 	} else {
 		FormatOutput(Red, "Redirect mechanism is not strong.")
 	}
-	return redirectStrong
+
+	return redirectStrong, nil
 }
 
 func CheckDmarcPolicy(dmarc *dmarcLib.DmarcRecord) bool {
@@ -185,6 +228,7 @@ func CheckDmarcExtras(dmarc *dmarcLib.DmarcRecord) {
 }
 
 // func CheckDmarcOrgPolicy() {}
+// Seems like the old spoofcheck does a load of extra checks. will see if i can do them recursively
 
 func IsDmarcStrong(opts *shared.Options) bool {
 	dmarcRecordStrong := false
@@ -199,11 +243,13 @@ func IsDmarcStrong(opts *shared.Options) bool {
 	if dmarc.Record != "" {
 		CheckDmarcExtras(dmarc)
 		dmarcRecordStrong = CheckDmarcPolicy(dmarc)
-	} else if dmarc.GetOrgDomain() != dmarc.Domain {
+		// is this acceptable???
+	} else if orgDomain, err := dmarc.GetOrgDomain(); orgDomain != dmarc.Domain && err == nil {
 		FormatOutput(White, "No DMARC record found. Looking for organizational record")
+		dmarcRecordStrong = IsDmarcStrong(&shared.Options{Domain: orgDomain, DnsResolver: opts.DnsResolver})
 		// return CheckDmarcOrgPolicy()
 		// dmarcRecordStrong = CheckDmarcOrgPolicy()
-		dmarcRecordStrong = false
+		// dmarcRecordStrong = false
 	} else {
 		FormatOutput(Red, fmt.Sprintf("%s has no DMARC record", white(opts.Domain)))
 		dmarcRecordStrong = false
