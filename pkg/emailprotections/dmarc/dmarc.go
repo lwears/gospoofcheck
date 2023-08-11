@@ -106,7 +106,7 @@ func InitalizeDmarc(dmarcString *string, domain *string) (*DmarcRecord, error) {
 }
 
 func ExtractTags(dmarcRecord string) [][]string {
-	dmarcPattern := regexp.MustCompile(`(\w+)=(.*?)(?:; ?|$)`)
+	dmarcPattern := regexp.MustCompile(`(\w+)=\s*([^;]*?)(?:; ?|$)`)
 	return dmarcPattern.FindAllStringSubmatch(dmarcRecord, -1)
 }
 

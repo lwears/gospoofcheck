@@ -1,7 +1,6 @@
 package spf
 
 import (
-	"errors"
 	"fmt"
 	"regexp"
 	"slices"
@@ -10,10 +9,6 @@ import (
 	"github.com/lwears/gospoofcheck/pkg/emailprotections/shared"
 	"github.com/miekg/dns"
 )
-
-const rootDomain = "@"
-
-var NoSpfFoundError = errors.New("No SPF string found for domain")
 
 type SpfRecord struct {
 	Version        string
@@ -35,7 +30,7 @@ func FromDomain(opts *shared.Options) (*SpfRecord, error) {
 
 func FromSpfString(spfString *string, domain *string) (*SpfRecord, error) {
 	if spfString == nil {
-		return nil, errors.New("no spf string")
+		return &SpfRecord{Domain: *domain}, nil
 	}
 
 	mechanisms := ExtractMechanisms(*spfString)
@@ -73,6 +68,10 @@ func GetSpfStringForDomain(opts *shared.Options) (*string, error) {
 func FindSpfStringFromAnswers(txtRecords []dns.RR) *string {
 	for _, a := range txtRecords {
 		x := a.(*dns.TXT)
+		// If spf is longer than 255 bytes its split into multiple strings
+		if len(x.Txt) > 1 {
+			x.Txt = []string{strings.Join(x.Txt, "")}
+		}
 		for _, t := range x.Txt {
 			if strings.Contains(t, "v=spf1") {
 				return &t
@@ -97,7 +96,7 @@ func ExtractAllMechanism(mechanisms []string) string {
 	allMachanism := ""
 	for _, m := range mechanisms {
 		if m == regexp.MustCompile(".*all.*").FindString(m) {
-			allMachanism = m
+			allMachanism = strings.TrimSpace(m)
 		}
 	}
 	return allMachanism
@@ -115,8 +114,10 @@ func ExtractAllMechanism(mechanisms []string) string {
 // 	}
 // }
 
-func (spf *SpfRecord) String() string {
-	return spf.Record
+func (spf *SpfRecord) PrettyPrintSpf() {
+	for _, m := range spf.Mechanisms {
+		fmt.Println("\t\t\t", m)
+	}
 }
 
 func (spf *SpfRecord) GetRedirectDomain() string {
