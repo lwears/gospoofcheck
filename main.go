@@ -10,10 +10,16 @@ import (
 
 	"github.com/fatih/color"
 
-	"github.com/lwears/gospoofcheck/pkg/dnsresolver"
-	dmarcLib "github.com/lwears/gospoofcheck/pkg/emailprotections/dmarc"
-	"github.com/lwears/gospoofcheck/pkg/emailprotections/shared"
-	spfLib "github.com/lwears/gospoofcheck/pkg/emailprotections/spf"
+	dmarcLib "github.com/lwears/gospoofcheck/emailprotections/dmarc"
+	"github.com/lwears/gospoofcheck/emailprotections/shared"
+	spfLib "github.com/lwears/gospoofcheck/emailprotections/spf"
+)
+
+const (
+	GooglePublicDNS = "8.8.8.8:53"
+	CloudflareDNS   = "1.1.1.1:53"
+	OpenDNS         = "208.67.222.222:53"
+	Quad9           = "9.9.9.9:53"
 )
 
 var (
@@ -58,12 +64,16 @@ func main() {
 
 	FormatOutput(White, fmt.Sprintf("Processing domain:\t\t\t%s", white(opts.Domain)))
 
-	IsSpfStrong(opts)
+	spfStrong, err := IsSpfStrong(opts)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	fmt.Println()
 
-	spoofable := IsDmarcStrong(opts)
+	dmarcStrong := IsDmarcStrong(opts)
 
-	if !spoofable {
+	if !spfStrong && !dmarcStrong {
 		FormatOutput(Red, fmt.Sprintf("Spoofing possible for:\t\t%s!", white(opts.Domain)))
 	} else {
 		FormatOutput(Green, fmt.Sprintf("Spoofing not possible for:\t\t%s", white(opts.Domain)))
@@ -73,7 +83,7 @@ func main() {
 
 func ReadOptions() (*shared.Options, error) {
 	cfg := &shared.Options{}
-	flag.StringVar(&cfg.DnsResolver, "dnsresolver", dnsresolver.OpenDNS, "Use a specific dns resolver with port such as `8.8.8.8:53` or `1.1.1.1:53`")
+	flag.StringVar(&cfg.DnsResolver, "dnsresolver", OpenDNS, "Use a specific dns resolver with port such as `8.8.8.8:53` or `1.1.1.1:53`")
 	flag.Parse()
 
 	cfg.Domain = flag.Arg(0)

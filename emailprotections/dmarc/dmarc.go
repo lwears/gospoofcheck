@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/lwears/gospoofcheck/pkg/emailprotections/shared"
+	"github.com/lwears/gospoofcheck/emailprotections/shared"
 	"github.com/miekg/dns"
 	"golang.org/x/net/publicsuffix"
 )
@@ -27,8 +27,8 @@ type DmarcRecord struct {
 	Record          string
 }
 
-func FromDmarcString(dmarcString *string, domain *string) (*DmarcRecord, error) {
-	dmarc, err := initalizeDmarc(dmarcString, domain)
+func FromDmarcString(dmarcString *string, domain string) (*DmarcRecord, error) {
+	dmarc, err := newDmarc(dmarcString, domain)
 	if err != nil {
 		return nil, err
 	}
@@ -42,7 +42,7 @@ func FromDomain(opts *shared.Options) (*DmarcRecord, error) {
 		return nil, errors.New("error getting dmarc string for domain")
 	}
 
-	dmarc, err := FromDmarcString(dmarcString, &opts.Domain)
+	dmarc, err := FromDmarcString(dmarcString, opts.Domain)
 	if err != nil {
 		return nil, fmt.Errorf("\nerror parsing dmarc string: %s", err)
 	}
@@ -108,9 +108,9 @@ func (dmarc *DmarcRecord) IsRecordStrong(dnsResolver string) (bool, error) {
 	return dmarc.IsOrgDomainStrong(dnsResolver)
 }
 
-func initalizeDmarc(dmarcString *string, domain *string) (*DmarcRecord, error) {
+func newDmarc(dmarcString *string, domain string) (*DmarcRecord, error) {
 	if dmarcString == nil {
-		return &DmarcRecord{Domain: *domain}, nil
+		return &DmarcRecord{Domain: domain}, nil
 	}
 
 	tags := extractTags(*dmarcString)
@@ -120,7 +120,7 @@ func initalizeDmarc(dmarcString *string, domain *string) (*DmarcRecord, error) {
 	}
 
 	dmarc := &DmarcRecord{
-		Domain:          *domain,
+		Domain:          domain,
 		Record:          *dmarcString,
 		Version:         mappedTags["v"],
 		Policy:          mappedTags["p"],

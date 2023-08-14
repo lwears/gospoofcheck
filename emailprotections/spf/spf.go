@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/lwears/gospoofcheck/pkg/emailprotections/shared"
+	"github.com/lwears/gospoofcheck/emailprotections/shared"
 	"github.com/miekg/dns"
 )
 
@@ -25,18 +25,18 @@ func FromDomain(opts *shared.Options) (*SpfRecord, error) {
 		return nil, fmt.Errorf("error getting spf string for domain %s", err)
 	}
 
-	return FromSpfString(spfString, &opts.Domain)
+	return FromSpfString(spfString, opts.Domain)
 }
 
-func FromSpfString(spfString *string, domain *string) (*SpfRecord, error) {
+func FromSpfString(spfString *string, domain string) (*SpfRecord, error) {
 	if spfString == nil {
-		return &SpfRecord{Domain: *domain}, nil
+		return &SpfRecord{Domain: domain}, nil
 	}
 
 	mechanisms := extractMechanisms(*spfString)
 
 	return &SpfRecord{
-		Domain:     *domain,
+		Domain:     domain,
 		Record:     *spfString,
 		Mechanisms: mechanisms,
 		Version:    extractVersion(*spfString),
