@@ -33,14 +33,14 @@ func FromSpfString(spfString *string, domain *string) (*SpfRecord, error) {
 		return &SpfRecord{Domain: *domain}, nil
 	}
 
-	mechanisms := ExtractMechanisms(*spfString)
+	mechanisms := extractMechanisms(*spfString)
 
 	return &SpfRecord{
 		Domain:     *domain,
 		Record:     *spfString,
 		Mechanisms: mechanisms,
-		Version:    ExtractVersion(*spfString),
-		AllString:  ExtractAllMechanism(mechanisms),
+		Version:    extractVersion(*spfString),
+		AllString:  extractAllMechanism(mechanisms),
 	}, nil
 }
 
@@ -60,46 +60,9 @@ func GetSpfStringForDomain(opts *shared.Options) (*string, error) {
 		return nil, err
 	}
 
-	result := FindSpfStringFromAnswers(r.Answer)
+	result := findSpfStringFromAnswers(r.Answer)
 
 	return result, nil
-}
-
-func FindSpfStringFromAnswers(txtRecords []dns.RR) *string {
-	for _, a := range txtRecords {
-		x := a.(*dns.TXT)
-		// If spf is longer than 255 bytes its split into multiple strings
-		if len(x.Txt) > 1 {
-			x.Txt = []string{strings.Join(x.Txt, "")}
-		}
-		for _, t := range x.Txt {
-			if strings.Contains(t, "v=spf1") {
-				return &t
-			}
-		}
-	}
-	return nil
-}
-
-func ExtractMechanisms(spfString string) []string {
-	spfMechanismPattern := regexp.MustCompile(`(?:((?:\+|-|~)?(?:a|mx|ptr|include|ip4|ip6|exists|redirect|exp|all)(?:(?::|=|/)?(?:\S*))?) ?)`)
-	return spfMechanismPattern.FindAllString(spfString, -1)
-}
-
-func ExtractVersion(spfString string) string {
-	spfVersionPattern := regexp.MustCompile("^v=(spf.)")
-	spfVersion := spfVersionPattern.FindString(spfString)
-	return spfVersion
-}
-
-func ExtractAllMechanism(mechanisms []string) string {
-	allMachanism := ""
-	for _, m := range mechanisms {
-		if m == regexp.MustCompile(".*all.*").FindString(m) {
-			allMachanism = strings.TrimSpace(m)
-		}
-	}
-	return allMachanism
 }
 
 // func (spf *SpfRecord) GetRedirectedRecord() string {
@@ -113,12 +76,6 @@ func ExtractAllMechanism(mechanisms []string) string {
 // 		}
 // 	}
 // }
-
-func (spf *SpfRecord) PrettyPrintSpf() {
-	for _, m := range spf.Mechanisms {
-		fmt.Println("\t\t\t", m)
-	}
-}
 
 func (spf *SpfRecord) GetRedirectDomain() string {
 	if len(spf.Mechanisms) > 0 {
@@ -211,4 +168,41 @@ func (spf *SpfRecord) GetIncludeRecords(dnsResolver string) (map[string]*SpfReco
 		}
 	}
 	return start, nil
+}
+
+func findSpfStringFromAnswers(txtRecords []dns.RR) *string {
+	for _, a := range txtRecords {
+		x := a.(*dns.TXT)
+		// If spf is longer than 255 bytes its split into multiple strings
+		if len(x.Txt) > 1 {
+			x.Txt = []string{strings.Join(x.Txt, "")}
+		}
+		for _, t := range x.Txt {
+			if strings.Contains(t, "v=spf1") {
+				return &t
+			}
+		}
+	}
+	return nil
+}
+
+func extractMechanisms(spfString string) []string {
+	spfMechanismPattern := regexp.MustCompile(`(?:((?:\+|-|~)?(?:a|mx|ptr|include|ip4|ip6|exists|redirect|exp|all)(?:(?::|=|/)?(?:\S*))?) ?)`)
+	return spfMechanismPattern.FindAllString(spfString, -1)
+}
+
+func extractVersion(spfString string) string {
+	spfVersionPattern := regexp.MustCompile("^v=(spf.)")
+	spfVersion := spfVersionPattern.FindString(spfString)
+	return spfVersion
+}
+
+func extractAllMechanism(mechanisms []string) string {
+	allMachanism := ""
+	for _, m := range mechanisms {
+		if m == regexp.MustCompile(".*all.*").FindString(m) {
+			allMachanism = strings.TrimSpace(m)
+		}
+	}
+	return allMachanism
 }

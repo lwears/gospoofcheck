@@ -4,12 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/lwears/gospoofcheck/pkg/emailprotections/shared"
 	"github.com/miekg/dns"
-	"golang.org/x/exp/slices"
 	"golang.org/x/net/publicsuffix"
 )
 
@@ -27,57 +27,13 @@ type DmarcRecord struct {
 	Record          string
 }
 
-func (dmarc *DmarcRecord) String() string {
-	return dmarc.Record
-}
-
 func FromDmarcString(dmarcString *string, domain *string) (*DmarcRecord, error) {
-	dmarc, err := InitalizeDmarc(dmarcString, domain)
+	dmarc, err := initalizeDmarc(dmarcString, domain)
 	if err != nil {
 		return nil, err
 	}
 
 	return dmarc, nil
-}
-
-func InitalizeDmarc(dmarcString *string, domain *string) (*DmarcRecord, error) {
-	if dmarcString == nil {
-		return &DmarcRecord{Domain: *domain}, nil
-	}
-
-	tags := ExtractTags(*dmarcString)
-	mappedTags := make(map[string]string)
-	for i := 0; i < len(tags); i++ {
-		mappedTags[tags[i][1]] = tags[i][2]
-	}
-
-	dmarc := &DmarcRecord{
-		Domain:          *domain,
-		Record:          *dmarcString,
-		Version:         mappedTags["v"],
-		Policy:          mappedTags["p"],
-		ReportInterval:  mappedTags["ri"],
-		RUF:             mappedTags["ruf"],
-		RUA:             mappedTags["rua"],
-		SubdomainPolicy: mappedTags["sp"],
-		SpfAlignment:    mappedTags["aspf"],
-		DkimAlignment:   mappedTags["padkim"],
-	}
-
-	if _, ok := mappedTags["pct"]; ok {
-		percent, err := strconv.Atoi(mappedTags["pct"])
-		if err != nil {
-			return nil, fmt.Errorf("error converting percent to integer type %w", err)
-		}
-		dmarc.Percent = &percent
-	}
-
-	return dmarc, nil
-}
-
-func ExtractTags(dmarcRecord string) [][]string {
-	dmarcPattern := regexp.MustCompile(`(\w+)=\s*([^;]*?)(?:; ?|$)`)
-	return dmarcPattern.FindAllStringSubmatch(dmarcRecord, -1)
 }
 
 func FromDomain(opts *shared.Options) (*DmarcRecord, error) {
@@ -92,18 +48,6 @@ func FromDomain(opts *shared.Options) (*DmarcRecord, error) {
 	}
 
 	return dmarc, nil
-}
-
-func FindRecordFromAnswers(txtRecords []dns.RR) *string {
-	for _, a := range txtRecords {
-		x := a.(*dns.TXT)
-		for _, t := range x.Txt {
-			if strings.Contains(t, "v=DMARC") {
-				return &t
-			}
-		}
-	}
-	return nil
 }
 
 func GetDmarcStringForDomain(opts *shared.Options) (*string, error) {
@@ -122,7 +66,7 @@ func GetDmarcStringForDomain(opts *shared.Options) (*string, error) {
 		return nil, err
 	}
 
-	result := FindRecordFromAnswers(r.Answer)
+	result := findRecordFromAnswers(r.Answer)
 
 	return result, nil
 }
@@ -162,4 +106,56 @@ func (dmarc *DmarcRecord) IsRecordStrong(dnsResolver string) (bool, error) {
 		return true, nil
 	}
 	return dmarc.IsOrgDomainStrong(dnsResolver)
+}
+
+func initalizeDmarc(dmarcString *string, domain *string) (*DmarcRecord, error) {
+	if dmarcString == nil {
+		return &DmarcRecord{Domain: *domain}, nil
+	}
+
+	tags := extractTags(*dmarcString)
+	mappedTags := make(map[string]string)
+	for i := 0; i < len(tags); i++ {
+		mappedTags[tags[i][1]] = tags[i][2]
+	}
+
+	dmarc := &DmarcRecord{
+		Domain:          *domain,
+		Record:          *dmarcString,
+		Version:         mappedTags["v"],
+		Policy:          mappedTags["p"],
+		ReportInterval:  mappedTags["ri"],
+		RUF:             mappedTags["ruf"],
+		RUA:             mappedTags["rua"],
+		SubdomainPolicy: mappedTags["sp"],
+		SpfAlignment:    mappedTags["aspf"],
+		DkimAlignment:   mappedTags["padkim"],
+	}
+
+	if _, ok := mappedTags["pct"]; ok {
+		percent, err := strconv.Atoi(mappedTags["pct"])
+		if err != nil {
+			return nil, fmt.Errorf("error converting percent to integer type %w", err)
+		}
+		dmarc.Percent = &percent
+	}
+
+	return dmarc, nil
+}
+
+func extractTags(dmarcRecord string) [][]string {
+	dmarcPattern := regexp.MustCompile(`(\w+)=\s*([^;]*?)(?:; ?|$)`)
+	return dmarcPattern.FindAllStringSubmatch(dmarcRecord, -1)
+}
+
+func findRecordFromAnswers(txtRecords []dns.RR) *string {
+	for _, a := range txtRecords {
+		x := a.(*dns.TXT)
+		for _, t := range x.Txt {
+			if strings.Contains(t, "v=DMARC") {
+				return &t
+			}
+		}
+	}
+	return nil
 }
