@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
 	"slices"
 	"strconv"
 
@@ -78,7 +79,8 @@ func ReadOptions() (*shared.Options, error) {
 	cfg.Domain = flag.Arg(0)
 
 	if cfg.Domain == "" {
-		log.Fatal("no domain passed")
+		color.New(color.Bold, color.FgRed).Println("no domain passed")
+		os.Exit(0)
 	}
 
 	return cfg, nil
