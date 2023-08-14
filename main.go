@@ -55,7 +55,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	FormatOutput(White, FormatText("Processing domain:", white(opts.Domain)))
+	FormatOutput(White, fmt.Sprintf("Processing domain:\t\t\t%s", white(opts.Domain)))
 
 	IsSpfStrong(opts)
 	fmt.Println()
@@ -63,9 +63,9 @@ func main() {
 	spoofable := IsDmarcStrong(opts)
 
 	if !spoofable {
-		FormatOutput(Red, fmt.Sprintf("Spoofing possible for %s!", white(opts.Domain)))
+		FormatOutput(Red, fmt.Sprintf("Spoofing possible for:\t\t%s!", white(opts.Domain)))
 	} else {
-		FormatOutput(Green, fmt.Sprintf("Spoofing not possible for %s", white(opts.Domain)))
+		FormatOutput(Green, fmt.Sprintf("Spoofing not possible for:\t\t%s", white(opts.Domain)))
 	}
 	fmt.Println()
 }
@@ -84,10 +84,6 @@ func ReadOptions() (*shared.Options, error) {
 	return cfg, nil
 }
 
-func FormatText(t, v string) string {
-	return fmt.Sprintf("%s\t\t\t%s", t, v)
-}
-
 func IsSpfStrong(opts *shared.Options) (bool, error) {
 	spf, err := spfLib.FromDomain(opts)
 	if err != nil {
@@ -99,7 +95,7 @@ func IsSpfStrong(opts *shared.Options) (bool, error) {
 		return false, nil
 	}
 
-	FormatOutput(Blue, FormatText("Found SPF record:", white(spf.Record)))
+	FormatOutput(Blue, fmt.Sprintf("Found SPF record:\t\t\t%s", white(spf.Record)))
 
 	strong, err := CheckSpfAllMechanism(spf, opts)
 	if err != nil {
@@ -160,7 +156,7 @@ func CheckSpfAllMechanism(spf *spfLib.SpfRecord, opts *shared.Options) (bool, er
 	strong := slices.Contains([]string{"~all", "-all"}, spf.AllString)
 
 	if strong {
-		FormatOutput(Blue, fmt.Sprintf("SPF includes an \"All\" item: \t %s", white(spf.AllString)))
+		FormatOutput(Green, fmt.Sprintf("SPF includes an \"All\" item: \t %s", white(spf.AllString)))
 		return strong, nil
 	} else {
 		FormatOutput(Red, fmt.Sprintf("SPF record \"All\" item is too weak: %s", white(spf.AllString)))
@@ -184,21 +180,6 @@ func AreSpfIncludeMechanismsStrong(spf *spfLib.SpfRecord, opts *shared.Options) 
 
 	return strong, nil
 }
-
-// TODO: Check this
-// func CheckSpfIncludeRedirect(spf *spfLib.SpfRecord, opts *shared.Options) (bool, error) {
-// 	areSpfIncludeMechanismsStrong, err := AreSpfIncludeMechanismsStrong(spf, opts)
-// 	if err != nil {
-// 		return false, err
-// 	}
-
-// 	isSpfRedirectStrong, err := IsSpfRedirectStrong(spf)
-// 	if err != nil {
-// 		return false, err
-// 	}
-
-// 	return isSpfRedirectStrong || areSpfIncludeMechanismsStrong, nil
-// }
 
 func CheckSpfIncludeRedirect(spf *spfLib.SpfRecord, opts *shared.Options) (bool, error) {
 	var err error
@@ -278,7 +259,7 @@ func IsDmarcStrong(opts *shared.Options) bool {
 	}
 
 	if dmarc.Record != "" {
-		FormatOutput(Blue, FormatText("Found DMARC record:", white(dmarc.Record)))
+		FormatOutput(Blue, fmt.Sprintf("Found DMARC record:\t\t\t%s", white(dmarc.Record)))
 		CheckDmarcExtras(dmarc)
 		dmarcRecordStrong = CheckDmarcPolicy(dmarc)
 		// is this acceptable???

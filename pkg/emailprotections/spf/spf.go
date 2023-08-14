@@ -148,26 +148,6 @@ func (spf *SpfRecord) IsRedirectMechanismStrong(dnsResolver string) (bool, error
 	return false, nil
 }
 
-// func (spf *SpfRecord) IsRedirectMechanismStrong2(dnsResolver string) bool {
-// 	if strings.TrimSpace(dnsResolver) == "" {
-// 		dnsResolver = dnsresolver.CloudflareDNS
-// 	}
-// 	// Look at this
-// 	redirectDomain := spf.GetRedirectDomain()
-// 	if redirectDomain != nil {
-// 		redirectMechanism := FromDomain(Param{DnsResolver: dnsResolver, Domain: *redirectDomain})
-
-// 		if redirectMechanism != nil {
-// 			return redirectMechanism.IsRecordStrong()
-// 		} else {
-// 			return false
-// 		}
-// 	} else {
-// 		return false
-// 	}
-
-// }
-
 func (spf *SpfRecord) IsRecordStrong(opts *shared.Options) (bool, error) {
 	allStrength := spf.IsAllMechanismStrong()
 
@@ -189,7 +169,7 @@ func (spf *SpfRecord) IsAllMechanismStrong() bool {
 }
 
 func (spf *SpfRecord) AreIncludeMechanismsStrong(opts *shared.Options) (bool, error) {
-	includeRecords, err := spf.GetIncludeRecords()
+	includeRecords, err := spf.GetIncludeRecords(opts.DnsResolver)
 	if err != nil {
 		return false, fmt.Errorf("error fetching include record spf %s", err)
 	}
@@ -214,8 +194,7 @@ func (spf *SpfRecord) GetIncludeDomains() []string {
 	return includeDomains
 }
 
-// need to check this. includes empty for "yourwebservers.com"
-func (spf *SpfRecord) GetIncludeRecords() (map[string]*SpfRecord, error) {
+func (spf *SpfRecord) GetIncludeRecords(dnsResolver string) (map[string]*SpfRecord, error) {
 	start := make(map[string]*SpfRecord)
 
 	if spf.RecursionDepth >= 10 {
@@ -223,9 +202,8 @@ func (spf *SpfRecord) GetIncludeRecords() (map[string]*SpfRecord, error) {
 	} else {
 		includeDomains := spf.GetIncludeDomains()
 		for _, domain := range includeDomains {
-			// TODO: Fix DNS Resolver
 			var err error
-			start[domain], err = FromDomain(&shared.Options{Domain: domain})
+			start[domain], err = FromDomain(&shared.Options{Domain: domain, DnsResolver: dnsResolver})
 			if err != nil {
 				return nil, fmt.Errorf("error fetching include record spf %s", err)
 			}
