@@ -239,13 +239,13 @@ func CheckDmarcPolicy(dmarc *dmarcLib.DmarcRecord) bool {
 
 func CheckDmarcExtras(dmarc *dmarcLib.DmarcRecord) {
 	if dmarc.Percent != nil && *dmarc.Percent != 100 {
-		FormatOutput(White, fmt.Sprintf("DMARC percentage is set to %s%% - spoofing might be possible", white(strconv.Itoa(*dmarc.Percent))))
+		FormatOutput(Yellow, fmt.Sprintf("DMARC percentage is set to:\t\t%s%% - %s", white(strconv.Itoa(*dmarc.Percent)), yellow("spoofing might be possible")))
 	}
 	if dmarc.RUA != "" {
-		FormatOutput(White, fmt.Sprintf("Aggregate reports are sent to: \t%s", white(dmarc.RUA)))
+		FormatOutput(White, fmt.Sprintf("Aggregate reports are sent to:\t%s", white(dmarc.RUA)))
 	}
 	if dmarc.RUF != "" {
-		FormatOutput(White, fmt.Sprintf("Forensics reports are sent to: \t%s", white(dmarc.RUF)))
+		FormatOutput(White, fmt.Sprintf("Forensics reports are sent to:\t%s", white(dmarc.RUF)))
 	}
 }
 
