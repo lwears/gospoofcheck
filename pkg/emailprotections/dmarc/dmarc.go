@@ -40,15 +40,6 @@ func FromDmarcString(dmarcString *string, domain *string) (*DmarcRecord, error) 
 	return dmarc, nil
 }
 
-/*
-	marshaled, err := json.MarshalIndent(mappedTags, "", "   ")
-	if err != nil {
-		log.Fatalf("marshaling error: %s", err)
-	}
-	fmt.Println(string(marshaled))
-
-*/
-
 func InitalizeDmarc(dmarcString *string, domain *string) (*DmarcRecord, error) {
 	if dmarcString == nil {
 		return &DmarcRecord{Domain: *domain}, nil
@@ -59,21 +50,6 @@ func InitalizeDmarc(dmarcString *string, domain *string) (*DmarcRecord, error) {
 	for i := 0; i < len(tags); i++ {
 		mappedTags[tags[i][1]] = tags[i][2]
 	}
-
-	// marshaled, err := json.MarshalIndent(mappedTags, "", "   ")
-	// if err != nil {
-	// 	log.Fatalf("marshaling error: %s", err)
-	// }
-	// fmt.Println(string(marshaled))
-
-	// version := mappedTags["v"]
-	// policy := mappedTags["p"]
-	// reportInterval := mappedTags["ri"]
-	// ruf := mappedTags["ruf"]
-	// rua := mappedTags["rua"]
-	// subdomainPolicy := mappedTags["sp"]
-	// spfAlignment := mappedTags["aspf"]
-	// dkimAlignment := mappedTags["adkim"]
 
 	dmarc := &DmarcRecord{
 		Domain:          *domain,
@@ -95,12 +71,6 @@ func InitalizeDmarc(dmarcString *string, domain *string) (*DmarcRecord, error) {
 		}
 		dmarc.Percent = &percent
 	}
-
-	// marshaled2, err := json.MarshalIndent(dmarc, "", "   ")
-	// if err != nil {
-	// 	log.Fatalf("marshaling error: %s", err)
-	// }
-	// fmt.Println(string(marshaled2))
 
 	return dmarc, nil
 }
