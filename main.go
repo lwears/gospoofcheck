@@ -69,16 +69,19 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// IsSpfStrong could print a few different lines of text. to avoid random lines there needs to be an empty print statement here.
 	fmt.Println()
 
 	dmarcStrong := IsDmarcStrong(opts)
 
+	// Same as the above
+	fmt.Println()
+
 	if !spfStrong && !dmarcStrong {
 		FormatOutput(Red, fmt.Sprintf("Spoofing possible for:\t\t%s!", white(opts.Domain)))
 	} else {
-		FormatOutput(Green, fmt.Sprintf("Spoofing not possible for:\t\t%s", white(opts.Domain)))
+		FormatOutput(Green, fmt.Sprintf("Spoofing not possible for:\t\t%s\n", white(opts.Domain)))
 	}
-	fmt.Println()
 }
 
 func ReadOptions() (*shared.Options, error) {
