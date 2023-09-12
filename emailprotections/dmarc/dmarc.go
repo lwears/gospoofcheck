@@ -101,6 +101,10 @@ func (dmarc *DmarcRecord) IsSubdomainPolicyStrong() bool {
 	return slices.Contains([]string{"quarantine", "reject"}, dmarc.SubdomainPolicy)
 }
 
+func (dmarc *DmarcRecord) IsPolicyStrong() bool {
+	return slices.Contains([]string{"quarantine", "reject"}, dmarc.Policy)
+}
+
 func (dmarc *DmarcRecord) IsRecordStrong(dnsResolver string) (bool, error) {
 	if dmarc.Policy != "" && slices.Contains([]string{"quarantine", "reject"}, dmarc.Policy) {
 		return true, nil

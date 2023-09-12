@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"slices"
 	"strconv"
 
 	"github.com/fatih/color"
@@ -21,6 +20,20 @@ const (
 	OpenDNS         = "208.67.222.222:53"
 	Quad9           = "9.9.9.9:53"
 )
+
+type Spf struct {
+	spfLib.SpfRecord
+	IsStrong                 bool
+	RedirectMechanismsStrong bool
+	IncludeMechanismsStrong  bool
+	IsRedirect               bool
+	IsInclude                bool
+}
+
+type Dmarc struct {
+	dmarcLib.DmarcRecord
+	IsOrg bool
+}
 
 var (
 	red    = color.New(color.Bold, color.FgRed).SprintFunc()
@@ -64,29 +77,72 @@ func main() {
 
 	FormatOutput(White, fmt.Sprintf("Processing domain:\t\t\t%s", white(opts.Domain)))
 
-	spfStrong, err := IsSpfStrong(opts)
+	spf, err := BuildSpfStats(opts, false, false)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// IsSpfStrong could print a few different lines of text. to avoid random lines there needs to be an empty print statement here.
-	fmt.Println()
+	// BuildSpfStats could print a few different lines of text. to avoid random lines there needs to be an empty print statement here.
 
-	dmarcStrong := IsDmarcStrong(opts)
+	dmarc := GetDmarc(opts, false)
 
-	// Same as the above
-	fmt.Println()
+	spf.PrintStats(opts)
+	dmarc.PrintStats(opts)
+}
 
-	if !spfStrong && !dmarcStrong {
-		FormatOutput(Red, fmt.Sprintf("Spoofing possible for:\t\t%s!", white(opts.Domain)))
+func (s *Spf) PrintStats(opts *shared.Options) {
+	if s.Record == "" {
+		FormatOutput(Red, fmt.Sprintf("%s has no SPF record", white(s.Domain)))
+		return
 	} else {
-		FormatOutput(Green, fmt.Sprintf("Spoofing not possible for:\t\t%s\n", white(opts.Domain)))
+		FormatOutput(Blue, fmt.Sprintf("Found SPF record:\t\t\t%s", white(s.Record)))
+	}
+
+	if s.AllString == "" {
+		FormatOutput(Red, "SPF record has no \"All\" string")
+	} else if s.IsAllMechanismStrong() {
+		FormatOutput(Green, fmt.Sprintf("SPF includes an \"All\" item: \t %s", white(s.AllString)))
+		return
+	} else {
+		FormatOutput(Red, fmt.Sprintf("SPF record \"All\" item is too weak: %s", white(s.AllString)))
+		redirectDomain := s.GetRedirectDomain()
+		if redirectDomain == "" {
+			FormatOutput(Yellow, fmt.Sprintf("Processing an SPF redirect domain: %s", redirectDomain))
+		}
+		redirectStrong, err := s.IsRedirectMechanismStrong(opts.DnsResolver)
+		if err != nil {
+			fmt.Printf("error checking if redirect mechanism is strong %s", err)
+		}
+		if redirectStrong {
+			FormatOutput(Green, "Redirect mechanism is strong.")
+		} else {
+			FormatOutput(Red, "Redirect mechanism is not strong.")
+			FormatOutput(White, "Checking SPF include mechanisms")
+			includeMechanismsStrong, err := s.AreIncludeMechanismsStrong(opts)
+			if err != nil {
+				fmt.Printf("error checking include mechanisms %s", err)
+			}
+
+			if includeMechanismsStrong {
+				FormatOutput(Green, "Include mechanisms include a strong record")
+			} else {
+				FormatOutput(Red, "Include mechanisms are not strong")
+			}
+		}
+
+	}
+
+	// Need to Fix printing if Spoofable
+	if !s.IsStrong {
+		FormatOutput(Red, fmt.Sprintf("Spoofing possible for:\t\t%s!", white(s.Domain)))
+	} else {
+		FormatOutput(Green, fmt.Sprintf("Spoofing not possible for:\t\t%s\n", white(s.Domain)))
 	}
 }
 
 func ReadOptions() (*shared.Options, error) {
 	cfg := &shared.Options{}
-	flag.StringVar(&cfg.DnsResolver, "dnsresolver", OpenDNS, "Use a specific dns resolver with port such as `8.8.8.8:53` or `1.1.1.1:53`")
+	flag.StringVar(&cfg.DnsResolver, "dnsresolver", CloudflareDNS, "Use a specific dns resolver with port such as `8.8.8.8:53` or `1.1.1.1:53`")
 	flag.Parse()
 
 	cfg.Domain = flag.Arg(0)
@@ -99,122 +155,104 @@ func ReadOptions() (*shared.Options, error) {
 	return cfg, nil
 }
 
-func IsSpfStrong(opts *shared.Options) (bool, error) {
+func BuildSpfStats(opts *shared.Options, isRedirect, isInclude bool) (*Spf, error) {
 	spf, err := spfLib.FromDomain(opts)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	if spf.Record == "" {
-		FormatOutput(Red, fmt.Sprintf("%s has no SPF record", white(opts.Domain)))
-		return false, nil
+		// FormatOutput(Red, fmt.Sprintf("%s has no SPF record", white(opts.Domain)))
+		// return false, nil
+		return &Spf{SpfRecord: *spf, IsStrong: false}, nil
 	}
 
-	FormatOutput(Blue, fmt.Sprintf("Found SPF record:\t\t\t%s", white(spf.Record)))
+	// FormatOutput(Blue, fmt.Sprintf("Found SPF record:\t\t\t%s", white(spf.Record)))
 
-	strong, err := CheckSpfAllMechanism(spf, opts)
+	isRecordStrong, err := spf.IsRecordStrong(opts)
 	if err != nil {
-		return false, fmt.Errorf("error checking include mechanisms %s", err)
+		return nil, err
 	}
 
-	if !strong {
+	s := Spf{SpfRecord: *spf, IsStrong: isRecordStrong}
 
-		redirectStrength, err := CheckSpfRedirectMechanisms(spf, opts.DnsResolver)
-		if err != nil {
-			log.Fatal(err)
+	if spf.AllString != "" && spf.IsAllMechanismStrong() {
+		if spf.GetRedirectDomain() != "" {
+			// redirectStrong, err := IsSpfRedirectStrong(spf, opts)
+			redirectStrong, err := spf.IsRedirectMechanismStrong(opts.DnsResolver)
+			if err != nil {
+				return nil, fmt.Errorf("error checking if redirect mechanism is strong %s", err)
+			}
+			s.RedirectMechanismsStrong = redirectStrong
+
+			if !redirectStrong {
+				FormatOutput(White, "Checking SPF include mechanisms")
+				includeMechanismsStrong, err := spf.AreIncludeMechanismsStrong(opts)
+				if err != nil {
+					return nil, fmt.Errorf("error checking include mechanisms %s", err)
+				}
+				s.IncludeMechanismsStrong = includeMechanismsStrong
+			}
 		}
-
-		includeStrength, err := CheckSpfIncludeMechanisms(spf, opts.DnsResolver)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		return redirectStrength || includeStrength, nil
 	}
 
-	return strong, nil
+	return &s, nil
 }
 
-func CheckSpfRedirectMechanisms(spf *spfLib.SpfRecord, dnsResolver string) (bool, error) {
+func CheckSpfRedirectMechanisms(spf *spfLib.SpfRecord, dnsResolver string) (*Spf, error) {
 	redirectDomain := spf.GetRedirectDomain()
 	if redirectDomain == "" {
-		return false, nil
+		return &Spf{}, nil
 	}
 	FormatOutput(Yellow, fmt.Sprintf("Processing an SPF redirect domain: %s", redirectDomain))
-	return IsSpfStrong(&shared.Options{Domain: redirectDomain, DnsResolver: dnsResolver})
+	return BuildSpfStats(&shared.Options{Domain: redirectDomain, DnsResolver: dnsResolver}, true, false)
 }
 
-func CheckSpfIncludeMechanisms(spf *spfLib.SpfRecord, dnsResolver string) (bool, error) {
+func FirstStrongSpfFromIncludes(spf *spfLib.SpfRecord, dnsResolver string) (*Spf, error) {
 	includeDomainList := spf.GetIncludeDomains()
 
 	for _, domain := range includeDomainList {
 		FormatOutput(Yellow, fmt.Sprintf("Processing an SPF include domain: %s\n", domain))
 
-		strong, err := IsSpfStrong(&shared.Options{Domain: domain, DnsResolver: dnsResolver})
+		includeSpfStats, err := BuildSpfStats(&shared.Options{Domain: domain, DnsResolver: dnsResolver}, false, true)
 		if err != nil {
-			return false, fmt.Errorf("error checking if include domain has strong spf: %s", err)
+			return includeSpfStats, fmt.Errorf("error checking if include domain has strong spf: %s", err)
 		}
 
-		if strong {
-			return strong, nil
+		if includeSpfStats.IsStrong {
+			return includeSpfStats, nil
 		}
 
 	}
-	return false, nil
+	return &Spf{}, nil
 }
 
-func CheckSpfAllMechanism(spf *spfLib.SpfRecord, opts *shared.Options) (bool, error) {
-	if spf.AllString == "" {
-		FormatOutput(Red, "SPF record has no \"All\" string")
-	}
+// func CheckSpfIncludeRedirect(spf *spfLib.SpfRecord, opts *shared.Options) (bool, error) {
+// 	var err error
+// 	strong := false
 
-	strong := slices.Contains([]string{"~all", "-all"}, spf.AllString)
+// 	if spf.GetRedirectDomain() != "" {
+// 		strong, err = IsSpfRedirectStrong(spf, opts)
+// 		if err != nil {
+// 			return false, fmt.Errorf("error checking if redirect mechanism is strong %s", err)
+// 		}
+// 	}
 
-	if strong {
-		FormatOutput(Green, fmt.Sprintf("SPF includes an \"All\" item: \t %s", white(spf.AllString)))
-		return strong, nil
-	} else {
-		FormatOutput(Red, fmt.Sprintf("SPF record \"All\" item is too weak: %s", white(spf.AllString)))
-		return CheckSpfIncludeRedirect(spf, opts)
-	}
-}
+// 	if !strong {
+// 		FormatOutput(White, "Checking SPF include mechanisms")
+// 		strong, err = spf.AreIncludeMechanismsStrong(opts)
+// 		if err != nil {
+// 			return false, fmt.Errorf("error checking include mechanisms %s", err)
+// 		}
 
-func AreSpfIncludeMechanismsStrong(spf *spfLib.SpfRecord, opts *shared.Options) (bool, error) {
-	FormatOutput(White, "Checking SPF include mechanisms")
-
-	strong, err := spf.AreIncludeMechanismsStrong(opts)
-	if err != nil {
-		return false, fmt.Errorf("error checking include mechanisms %s", err)
-	}
-
-	if strong {
-		FormatOutput(Green, "Include mechanisms include a strong record")
-	} else {
-		FormatOutput(Red, "Include mechanisms are not strong")
-	}
-
-	return strong, nil
-}
-
-func CheckSpfIncludeRedirect(spf *spfLib.SpfRecord, opts *shared.Options) (bool, error) {
-	var err error
-	strong := false
-
-	if spf.GetRedirectDomain() != "" {
-		strong, err = IsSpfRedirectStrong(spf, opts)
-		if err != nil {
-			return false, fmt.Errorf("error checking if redirect mechanism is strong %s", err)
-		}
-	}
-
-	if !strong {
-		strong, err = AreSpfIncludeMechanismsStrong(spf, opts)
-		if err != nil {
-			return false, err
-		}
-	}
-	return strong, nil
-}
+// 		if strong {
+// 			FormatOutput(Green, "Include mechanisms include a strong record")
+// 		} else {
+// 			FormatOutput(Red, "Include mechanisms are not strong")
+// 		}
+// 	}
+// 	return strong, nil
+// }
 
 func IsSpfRedirectStrong(spf *spfLib.SpfRecord, opts *shared.Options) (bool, error) {
 	domain := spf.GetRedirectDomain()
@@ -226,68 +264,64 @@ func IsSpfRedirectStrong(spf *spfLib.SpfRecord, opts *shared.Options) (bool, err
 		return false, fmt.Errorf("error checking if redirect mechanism is strong %s", err)
 	}
 
-	if redirectStrong {
-		FormatOutput(Green, "Redirect mechanism is strong.")
-	} else {
-		FormatOutput(Red, "Redirect mechanism is not strong.")
-	}
+	// if redirectStrong {
+	// 	FormatOutput(Green, "Redirect mechanism is strong.")
+	// } else {
+	// 	FormatOutput(Red, "Redirect mechanism is not strong.")
+	// }
 
 	return redirectStrong, nil
-}
-
-func CheckDmarcPolicy(dmarc *dmarcLib.DmarcRecord) bool {
-	if dmarc.Policy == "" {
-		FormatOutput(Red, fmt.Sprintf("DMARC record has no policy: %s", white(dmarc.Policy)))
-		return false
-	}
-
-	if slices.Contains([]string{"quarantine", "reject"}, dmarc.Policy) {
-		FormatOutput(Green, fmt.Sprintf("DMARC policy set to:\t\t%s", white(dmarc.Policy)))
-		return true
-	}
-
-	FormatOutput(Red, fmt.Sprintf("DMARC policy set to:\t\t%s", white(dmarc.Policy)))
-	return false
-}
-
-func CheckDmarcExtras(dmarc *dmarcLib.DmarcRecord) {
-	if dmarc.Percent != nil && *dmarc.Percent != 100 {
-		FormatOutput(Yellow, fmt.Sprintf("DMARC percentage is set to:\t\t%s%% - %s", white(strconv.Itoa(*dmarc.Percent)), yellow("spoofing might be possible")))
-	}
-	if dmarc.RUA != "" {
-		FormatOutput(White, fmt.Sprintf("Aggregate reports are sent to:\t%s", white(dmarc.RUA)))
-	}
-	if dmarc.RUF != "" {
-		FormatOutput(White, fmt.Sprintf("Forensics reports are sent to:\t%s", white(dmarc.RUF)))
-	}
 }
 
 // func CheckDmarcOrgPolicy() {}
 // Seems like the old spoofcheck does a load of extra checks. will see if i can do them recursively
 
-func IsDmarcStrong(opts *shared.Options) bool {
-	dmarcRecordStrong := false
-
+func GetDmarc(opts *shared.Options, isOrg bool) *Dmarc {
 	dmarc, err := dmarcLib.FromDomain(opts)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	if dmarc.Record != "" {
-		FormatOutput(Blue, fmt.Sprintf("Found DMARC record:\t\t\t%s", white(dmarc.Record)))
-		CheckDmarcExtras(dmarc)
-		dmarcRecordStrong = CheckDmarcPolicy(dmarc)
-		// is this acceptable???
-	} else if orgDomain, err := dmarc.GetOrgDomain(); orgDomain != dmarc.Domain && err == nil {
-		FormatOutput(White, "No DMARC record found. Looking for organizational record")
-		dmarcRecordStrong = IsDmarcStrong(&shared.Options{Domain: orgDomain, DnsResolver: opts.DnsResolver})
-		// return CheckDmarcOrgPolicy()
-		// dmarcRecordStrong = CheckDmarcOrgPolicy()
-		// dmarcRecordStrong = false
-	} else {
-		FormatOutput(Red, fmt.Sprintf("%s has no DMARC record", white(opts.Domain)))
-		dmarcRecordStrong = false
+		return &Dmarc{DmarcRecord: *dmarc, IsOrg: isOrg}
 	}
 
-	return dmarcRecordStrong
+	if orgDomain, err := dmarc.GetOrgDomain(); err == nil && orgDomain != dmarc.Domain {
+		return GetDmarc(&shared.Options{Domain: orgDomain, DnsResolver: opts.DnsResolver}, true)
+	}
+
+	return &Dmarc{DmarcRecord: *dmarc}
+}
+
+func (d *Dmarc) PrintStats(opts *shared.Options) {
+	fmt.Println()
+	if d.Record == "" {
+		FormatOutput(Red, fmt.Sprintf("%s has no DMARC record\n", white(d.Domain)))
+		return
+	} else {
+		FormatOutput(Blue, fmt.Sprintf("Found DMARC record:\t\t\t%s", white(d.Record)))
+	}
+
+	if d.Policy == "" {
+		FormatOutput(Red, fmt.Sprintf("DMARC record has no policy: %s", white(d.Policy)))
+	} else if d.IsPolicyStrong() {
+		FormatOutput(Green, fmt.Sprintf("DMARC policy set to:\t\t%s", white(d.Policy)))
+	} else {
+		FormatOutput(Red, fmt.Sprintf("DMARC policy set to:\t\t%s", white(d.Policy)))
+	}
+
+	if d.Percent != nil && *d.Percent != 100 {
+		FormatOutput(Yellow, fmt.Sprintf("DMARC percentage is set to:\t\t%s%% - %s", white(strconv.Itoa(*d.Percent)), yellow("spoofing might be possible")))
+	}
+
+	if d.IsOrg {
+		FormatOutput(White, "No DMARC found but organizational record found")
+	}
+
+	if d.RUA != "" {
+		FormatOutput(White, fmt.Sprintf("Aggregate reports are sent to:\t%s", white(d.RUA)))
+	}
+	if d.RUF != "" {
+		FormatOutput(White, fmt.Sprintf("Forensics reports are sent to:\t%s", white(d.RUF)))
+	}
 }

@@ -3,7 +3,6 @@ package spf
 import (
 	"fmt"
 	"regexp"
-	"slices"
 	"strings"
 
 	"github.com/lwears/gospoofcheck/emailprotections/shared"
@@ -118,11 +117,11 @@ func (spf *SpfRecord) IsRecordStrong(opts *shared.Options) (bool, error) {
 		return false, fmt.Errorf("error checking include mechanisms %s", err)
 	}
 
-	return allStrength && redirectStrength && includeStrength, nil
+	return allStrength || redirectStrength || includeStrength, nil
 }
 
 func (spf *SpfRecord) IsAllMechanismStrong() bool {
-	return slices.Contains([]string{"~all", "-all"}, spf.AllString)
+	return spf.AllString == "-all"
 }
 
 func (spf *SpfRecord) AreIncludeMechanismsStrong(opts *shared.Options) (bool, error) {
@@ -132,7 +131,13 @@ func (spf *SpfRecord) AreIncludeMechanismsStrong(opts *shared.Options) (bool, er
 	}
 	for _, r := range includeRecords {
 		if _, ok := includeRecords[r.Domain]; ok {
-			return includeRecords[r.Domain].IsRecordStrong(opts)
+			isRecordStrong, err := includeRecords[r.Domain].IsRecordStrong(opts)
+			if err != nil {
+				return false, fmt.Errorf("error checking if include record is strong %s", err)
+			}
+			if isRecordStrong {
+				return true, nil
+			}
 		}
 	}
 	return false, nil
