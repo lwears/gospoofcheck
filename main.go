@@ -109,12 +109,17 @@ func (s *Spf) PrintStats(opts *shared.Options) {
 
 	if s.AllString == "" {
 		FormatOutput(Red, "SPF record has no \"All\" string")
+	} else if 
+
+	if s.AllString == "" || !s.IsAllMechanismStrong() {
+		//FormatOutput(Red, "SPF record has no \"All\" string")
 	} else if s.IsAllMechanismStrong() {
 		FormatOutput(Green, fmt.Sprintf("SPF includes an \"All\" item: \t %s", white(s.AllString)))
 	} else {
 		FormatOutput(Red, fmt.Sprintf("SPF record \"All\" item is too weak: %s", white(s.AllString)))
 		redirectDomain := s.GetRedirectDomain()
-		if redirectDomain == "" {
+		fmt.Println("Testing", redirectDomain)
+		if redirectDomain != "" {
 			FormatOutput(Yellow, fmt.Sprintf("Processing an SPF redirect domain: %s", redirectDomain))
 		}
 		redirectStrong, err := s.IsRedirectMechanismStrong(opts.DnsResolver)
@@ -173,7 +178,7 @@ func BuildSpfStats(opts *shared.Options, isRedirect, isInclude bool) (*Spf, erro
 
 	s := Spf{SpfRecord: *spf, IsStrong: isRecordStrong}
 
-	if spf.AllString != "" && spf.IsAllMechanismStrong() {
+	if spf.AllString == "" || !spf.IsAllMechanismStrong() {
 		if spf.GetRedirectDomain() != "" {
 			redirectStrong, err := spf.IsRedirectMechanismStrong(opts.DnsResolver)
 			if err != nil {
@@ -182,7 +187,8 @@ func BuildSpfStats(opts *shared.Options, isRedirect, isInclude bool) (*Spf, erro
 			s.RedirectMechanismsStrong = redirectStrong
 
 			if !redirectStrong {
-				FormatOutput(White, "Checking SPF include mechanisms")
+				fmt.Println("here")
+				// FormatOutput(White, "Checking SPF include mechanisms")
 				includeMechanismsStrong, err := spf.AreIncludeMechanismsStrong(opts)
 				if err != nil {
 					return nil, fmt.Errorf("error checking include mechanisms %s", err)
