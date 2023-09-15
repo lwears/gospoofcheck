@@ -51,9 +51,9 @@ func FromDomain(opts *shared.Options) (*DmarcRecord, error) {
 }
 
 func GetDmarcStringForDomain(opts *shared.Options) (*string, error) {
-	if !shared.IsValidDomainName(opts.Domain) {
-		return nil, shared.InvalidDomainError
-	}
+	// if !shared.IsValidDomainName(opts.Domain) {
+	// 	return nil, shared.InvalidDomainError
+	// }
 
 	fqnd := dns.Fqdn(fmt.Sprintf("_dmarc.%s", opts.Domain))
 	m := dns.Msg{}
@@ -150,10 +150,11 @@ func extractTags(dmarcRecord string) [][]string {
 
 func findRecordFromAnswers(txtRecords []dns.RR) *string {
 	for _, a := range txtRecords {
-		x := a.(*dns.TXT)
-		for _, t := range x.Txt {
-			if strings.Contains(t, "v=DMARC") {
-				return &t
+		if a, ok := a.(*dns.TXT); ok {
+			for _, t := range a.Txt {
+				if strings.Contains(t, "v=DMARC") {
+					return &t
+				}
 			}
 		}
 	}

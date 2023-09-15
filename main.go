@@ -140,7 +140,7 @@ func CheckSpfRedirectMechanisms(spf *spfLib.SpfRecord, dnsResolver string) (bool
 	if redirectDomain == "" {
 		return false, nil
 	}
-	FormatOutput(Yellow, fmt.Sprintf("Processing an SPF redirect domain: %s", redirectDomain))
+	FormatOutput(Yellow, fmt.Sprintf("Processing an SPF redirect domain: \t%s", white(redirectDomain)))
 	return IsSpfStrong(&shared.Options{Domain: redirectDomain, DnsResolver: dnsResolver})
 }
 
@@ -164,19 +164,18 @@ func CheckSpfIncludeMechanisms(spf *spfLib.SpfRecord, dnsResolver string) (bool,
 }
 
 func CheckSpfAllMechanism(spf *spfLib.SpfRecord, opts *shared.Options) (bool, error) {
-	if spf.AllString == "" {
-		FormatOutput(Red, "SPF record has no \"All\" string")
-	}
-
-	strong := slices.Contains([]string{"~all", "-all"}, spf.AllString)
-
-	if strong {
-		FormatOutput(Green, fmt.Sprintf("SPF includes an \"All\" item: \t %s", white(spf.AllString)))
+	if spf.AllString != "" {
+		strong := spf.IsAllMechanismStrong()
+		if strong {
+			FormatOutput(Green, fmt.Sprintf("SPF includes an \"All\" item: \t %s", white(spf.AllString)))
+		} else {
+			FormatOutput(Red, fmt.Sprintf("SPF record \"All\" item is too weak: %s", white(spf.AllString)))
+		}
 		return strong, nil
-	} else {
-		FormatOutput(Red, fmt.Sprintf("SPF record \"All\" item is too weak: %s", white(spf.AllString)))
-		return CheckSpfIncludeRedirect(spf, opts)
 	}
+
+	FormatOutput(Red, "SPF record has no \"All\" string")
+	return false, nil
 }
 
 func AreSpfIncludeMechanismsStrong(spf *spfLib.SpfRecord, opts *shared.Options) (bool, error) {
@@ -219,7 +218,7 @@ func CheckSpfIncludeRedirect(spf *spfLib.SpfRecord, opts *shared.Options) (bool,
 func IsSpfRedirectStrong(spf *spfLib.SpfRecord, opts *shared.Options) (bool, error) {
 	domain := spf.GetRedirectDomain()
 
-	FormatOutput(White, fmt.Sprintf("Checking SPF redirect domain: %s", domain))
+	FormatOutput(White, fmt.Sprintf("Checking SPF redirect domain: \t%s", white(domain)))
 
 	redirectStrong, err := spf.IsRedirectMechanismStrong(opts.DnsResolver)
 	if err != nil {

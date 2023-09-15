@@ -80,8 +80,9 @@ func GetSpfStringForDomain(opts *shared.Options) (*string, error) {
 func (spf *SpfRecord) GetRedirectDomain() string {
 	if len(spf.Mechanisms) > 0 {
 		for _, m := range spf.Mechanisms {
-			if m == regexp.MustCompile("redirect=(.*)").FindString(m) {
-				return m
+			matches := regexp.MustCompile("redirect=(.*)").FindStringSubmatch(m)
+			if len(matches) >= 1 {
+				return matches[1]
 			}
 		}
 	}
@@ -172,14 +173,15 @@ func (spf *SpfRecord) GetIncludeRecords(dnsResolver string) (map[string]*SpfReco
 
 func findSpfStringFromAnswers(txtRecords []dns.RR) *string {
 	for _, a := range txtRecords {
-		x := a.(*dns.TXT)
-		// If spf is longer than 255 bytes its split into multiple strings
-		if len(x.Txt) > 1 {
-			x.Txt = []string{strings.Join(x.Txt, "")}
-		}
-		for _, t := range x.Txt {
-			if strings.Contains(t, "v=spf1") {
-				return &t
+		if x, ok := a.(*dns.TXT); ok {
+			// If spf is longer than 255 bytes its split into multiple strings
+			if len(x.Txt) > 1 {
+				x.Txt = []string{strings.Join(x.Txt, "")}
+			}
+			for _, t := range x.Txt {
+				if strings.Contains(t, "v=spf1") {
+					return &t
+				}
 			}
 		}
 	}
